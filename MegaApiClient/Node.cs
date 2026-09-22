@@ -34,6 +34,8 @@
       Key = key;
       Iv = iv;
       MetaMac = metaMac;
+      FullKey = CreateFullKey(key, iv, metaMac);
+      Duration = MediaProperties.GetDuration(downloadResponse.SerializedFileAttributes, FullKey);
     }
 
     #region Public properties
@@ -64,6 +66,9 @@
 
     [JsonIgnore]
     public DateTime? CreationDate { get; private set; }
+
+    [JsonIgnore]
+    public TimeSpan? Duration { get; private set; }
 
     [JsonProperty("u")]
     public string Owner { get; private set; }
@@ -177,6 +182,7 @@
           Iv = iv;
           MetaMac = metaMac;
           Key = fileKey;
+          Duration = MediaProperties.GetDuration(SerializedFileAttributes, FullKey);
         }
         else
         {
@@ -228,6 +234,24 @@
         .Cast<IFileAttribute>()
         .ToArray();
     }
+
+    private static byte[] CreateFullKey(byte[] key, byte[] iv, byte[] metaMac)
+    {
+      if (key == null || key.Length != 16 || iv == null || iv.Length != 8 || metaMac == null || metaMac.Length != 8)
+      {
+        return null;
+      }
+
+      var fullKey = new byte[32];
+      Array.Copy(iv, 0, fullKey, 16, iv.Length);
+      Array.Copy(metaMac, 0, fullKey, 24, metaMac.Length);
+      for (var i = 0; i < key.Length; i++)
+      {
+        fullKey[i] = (byte)(key[i] ^ fullKey[i + 16]);
+      }
+
+      return fullKey;
+    }
   }
 
   [DebuggerDisplay("PublicNode - Type: {Type} - Name: {Name} - Id: {Id}")]
@@ -259,6 +283,7 @@
     public string Owner => _node.Owner;
     public NodeType Type => IsShareRoot && _node.Type == NodeType.Directory ? NodeType.Root : _node.Type;
     public DateTime? CreationDate => _node.CreationDate;
+    public TimeSpan? Duration => _node.Duration;
 
     public byte[] Key => _node.Key;
     public byte[] SharedKey => _node.SharedKey;

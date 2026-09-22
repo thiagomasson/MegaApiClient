@@ -20,6 +20,8 @@
 
     DateTime? CreationDate { get; }
 
+    TimeSpan? Duration { get; }
+
     string Owner { get; }
 
     IFileAttribute[] FileAttributes { get; }
