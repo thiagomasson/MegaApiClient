@@ -28,17 +28,17 @@ namespace CG.Web.MegaApiClient.Cryptography
     private const uint Delta = 0x9E3779B9;
     private static readonly Regex s_mediaAttributeRegex = new Regex(@"(?:^|/)(?:\d+:)?8\*(?<value>[a-zA-Z0-9-_]{11})(?:/|$)");
 
-    public static TimeSpan? GetDuration(string serializedFileAttributes, byte[] fullKey)
+    public static Values Get(string serializedFileAttributes, byte[] fullKey)
     {
       if (string.IsNullOrEmpty(serializedFileAttributes) || fullKey == null || fullKey.Length != 32)
       {
-        return null;
+        return default;
       }
 
       var match = s_mediaAttributeRegex.Match(serializedFileAttributes);
       if (!match.Success)
       {
-        return null;
+        return default;
       }
 
       try
@@ -46,7 +46,7 @@ namespace CG.Web.MegaApiClient.Cryptography
         var bytes = match.Groups["value"].Value.FromBase64();
         if (bytes.Length != 8)
         {
-          return null;
+          return default;
         }
 
         var values = new[] { ReadUInt32LittleEndian(bytes, 0), ReadUInt32LittleEndian(bytes, 4) };
@@ -65,7 +65,25 @@ namespace CG.Web.MegaApiClient.Cryptography
         // 254 and 255 mean unknown or unidentified media formats.
         if (bytes[7] >= 254)
         {
-          return null;
+          return default;
+        }
+
+        var width = (uint)((bytes[0] >> 1) + ((bytes[1] & 127) << 7));
+        if ((bytes[0] & 1) != 0)
+        {
+          width = (width << 3) + 16384;
+        }
+
+        var height = (uint)(bytes[2] + ((bytes[3] & 63) << 8));
+        if ((bytes[1] & 128) != 0)
+        {
+          height = (height << 3) + 16384;
+        }
+
+        var framesPerSecond = (uint)((bytes[3] >> 7) + ((bytes[4] & 63) << 1));
+        if ((bytes[3] & 64) != 0)
+        {
+          framesPerSecond = (framesPerSecond << 3) + 128;
         }
 
         var seconds = (uint)((bytes[4] >> 7) + (bytes[5] << 1) + (bytes[6] << 9));
@@ -74,12 +92,24 @@ namespace CG.Web.MegaApiClient.Cryptography
           seconds = seconds * 60 + 131100;
         }
 
-        return seconds == 0 ? (TimeSpan?)null : TimeSpan.FromSeconds(seconds);
+        return new Values(
+          seconds == 0 ? (TimeSpan?)null : TimeSpan.FromSeconds(seconds),
+          PositiveInt(width), PositiveInt(height), PositiveInt(framesPerSecond));
       }
       catch (FormatException)
       {
-        return null;
+        return default;
       }
+    }
+
+    public static TimeSpan? GetDuration(string serializedFileAttributes, byte[] fullKey)
+    {
+      return Get(serializedFileAttributes, fullKey).Duration;
+    }
+
+    private static int? PositiveInt(uint value)
+    {
+      return value == 0 || value > int.MaxValue ? (int?)null : (int)value;
     }
 
     private static void Decrypt(uint[] values, uint[] key)
@@ -126,6 +156,22 @@ namespace CG.Web.MegaApiClient.Cryptography
       bytes[offset + 1] = (byte)(value >> 8);
       bytes[offset + 2] = (byte)(value >> 16);
       bytes[offset + 3] = (byte)(value >> 24);
+    }
+
+    internal readonly struct Values
+    {
+      public Values(TimeSpan? duration, int? width, int? height, int? framesPerSecond)
+      {
+        Duration = duration;
+        Width = width;
+        Height = height;
+        FramesPerSecond = framesPerSecond;
+      }
+
+      public TimeSpan? Duration { get; }
+      public int? Width { get; }
+      public int? Height { get; }
+      public int? FramesPerSecond { get; }
     }
   }
 }

@@ -35,7 +35,7 @@
       Iv = iv;
       MetaMac = metaMac;
       FullKey = CreateFullKey(key, iv, metaMac);
-      Duration = MediaProperties.GetDuration(downloadResponse.SerializedFileAttributes, FullKey);
+      SetMediaProperties(downloadResponse.SerializedFileAttributes);
     }
 
     #region Public properties
@@ -69,6 +69,15 @@
 
     [JsonIgnore]
     public TimeSpan? Duration { get; private set; }
+
+    [JsonIgnore]
+    public int? Width { get; private set; }
+
+    [JsonIgnore]
+    public int? Height { get; private set; }
+
+    [JsonIgnore]
+    public int? FramesPerSecond { get; private set; }
 
     [JsonProperty("u")]
     public string Owner { get; private set; }
@@ -182,7 +191,7 @@
           Iv = iv;
           MetaMac = metaMac;
           Key = fileKey;
-          Duration = MediaProperties.GetDuration(SerializedFileAttributes, FullKey);
+          SetMediaProperties(SerializedFileAttributes);
         }
         else
         {
@@ -252,6 +261,15 @@
 
       return fullKey;
     }
+
+    private void SetMediaProperties(string serializedFileAttributes)
+    {
+      var properties = MediaProperties.Get(serializedFileAttributes, FullKey);
+      Duration = properties.Duration;
+      Width = properties.Width;
+      Height = properties.Height;
+      FramesPerSecond = properties.FramesPerSecond;
+    }
   }
 
   [DebuggerDisplay("PublicNode - Type: {Type} - Name: {Name} - Id: {Id}")]
@@ -284,6 +302,9 @@
     public NodeType Type => IsShareRoot && _node.Type == NodeType.Directory ? NodeType.Root : _node.Type;
     public DateTime? CreationDate => _node.CreationDate;
     public TimeSpan? Duration => _node.Duration;
+    public int? Width => _node.Width;
+    public int? Height => _node.Height;
+    public int? FramesPerSecond => _node.FramesPerSecond;
 
     public byte[] Key => _node.Key;
     public byte[] SharedKey => _node.SharedKey;

@@ -22,6 +22,12 @@
 
     TimeSpan? Duration { get; }
 
+    int? Width { get; }
+
+    int? Height { get; }
+
+    int? FramesPerSecond { get; }
+
     string Owner { get; }
 
     IFileAttribute[] FileAttributes { get; }

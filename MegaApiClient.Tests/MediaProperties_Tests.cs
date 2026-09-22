@@ -44,6 +44,31 @@ namespace CG.Web.MegaApiClient.Tests
       Assert.Equal(TimeSpan.FromSeconds(199980), duration);
     }
 
+    [Fact]
+    public void Get_ValidMediaAttribute_ReturnsDimensionsAndFrameRate()
+    {
+      var fullKey = CreateFullKey();
+
+      var properties = MediaProperties.Get(EncodeMediaAttribute(3723, fullKey, 1920, 1080, 60), fullKey);
+
+      Assert.Equal(1920, properties.Width);
+      Assert.Equal(1080, properties.Height);
+      Assert.Equal(60, properties.FramesPerSecond);
+      Assert.Equal(TimeSpan.FromSeconds(3723), properties.Duration);
+    }
+
+    [Fact]
+    public void Get_LargeDimensionsAndFrameRate_ReturnsCompressedValues()
+    {
+      var fullKey = CreateFullKey();
+
+      var properties = MediaProperties.Get(EncodeMediaAttribute(60, fullKey, 20000, 20000, 240), fullKey);
+
+      Assert.Equal(20000, properties.Width);
+      Assert.Equal(20000, properties.Height);
+      Assert.Equal(240, properties.FramesPerSecond);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -62,7 +87,7 @@ namespace CG.Web.MegaApiClient.Tests
       Crypto.GetPartsFromDecryptedKey(fullKey, out _, out _, out var fileKey);
       var encryptedKey = Crypto.EncryptKey(fullKey, masterKey).ToBase64();
       var encryptedAttributes = Crypto.EncryptAttributes(new Attributes("video.mp4"), fileKey).ToBase64();
-      var mediaAttribute = EncodeMediaAttribute(3723, fullKey);
+      var mediaAttribute = EncodeMediaAttribute(3723, fullKey, 3840, 2160, 30);
       var json = "{\"h\":\"node\",\"p\":\"parent\",\"t\":0,\"a\":\"" + encryptedAttributes +
         "\",\"k\":\"owner:" + encryptedKey + "\",\"fa\":\"" + mediaAttribute + "\",\"s\":123,\"ts\":1}";
       var sharedKeys = new List<SharedKey>();
@@ -70,6 +95,9 @@ namespace CG.Web.MegaApiClient.Tests
       INode node = JsonConvert.DeserializeObject<Node>(json, new NodeConverter(masterKey, ref sharedKeys));
 
       Assert.Equal(TimeSpan.FromSeconds(3723), node.Duration);
+      Assert.Equal(3840, node.Width);
+      Assert.Equal(2160, node.Height);
+      Assert.Equal(30, node.FramesPerSecond);
     }
 
     private static byte[] CreateFullKey()
@@ -83,8 +111,12 @@ namespace CG.Web.MegaApiClient.Tests
       return key;
     }
 
-    private static string EncodeMediaAttribute(uint seconds, byte[] fullKey)
+    private static string EncodeMediaAttribute(uint seconds, byte[] fullKey, uint width = 0, uint height = 0,
+      uint framesPerSecond = 0)
     {
+      var encodedWidth = EncodeCompact(width, 32768, 3, 32767);
+      var encodedHeight = EncodeCompact(height, 32768, 3, 32767);
+      var encodedFramesPerSecond = EncodeCompact(framesPerSecond, 256, 3, 255);
       var encodedDuration = seconds << 1;
       if (encodedDuration >= 262144)
       {
@@ -97,7 +129,11 @@ namespace CG.Web.MegaApiClient.Tests
       }
 
       var bytes = new byte[8];
-      bytes[4] = (byte)((encodedDuration & 3) << 6);
+      bytes[0] = (byte)(encodedWidth & 255);
+      bytes[1] = (byte)(((encodedWidth >> 8) & 127) + ((encodedHeight & 1) << 7));
+      bytes[2] = (byte)((encodedHeight >> 1) & 255);
+      bytes[3] = (byte)(((encodedFramesPerSecond & 3) << 6) + ((encodedHeight >> 9) & 63));
+      bytes[4] = (byte)(((encodedDuration & 3) << 6) + (encodedFramesPerSecond >> 2));
       bytes[5] = (byte)((encodedDuration >> 2) & 255);
       bytes[6] = (byte)(encodedDuration >> 10);
       bytes[7] = 1;
@@ -114,6 +150,17 @@ namespace CG.Web.MegaApiClient.Tests
       WriteUInt32LittleEndian(bytes, 0, values[0]);
       WriteUInt32LittleEndian(bytes, 4, values[1]);
       return "8*" + bytes.ToBase64();
+    }
+
+    private static uint EncodeCompact(uint value, uint threshold, int shift, uint maximum)
+    {
+      value <<= 1;
+      if (value >= threshold)
+      {
+        value = ((value - threshold) >> shift) | 1;
+      }
+
+      return value >= threshold ? maximum : value;
     }
 
     private static void Encrypt(uint[] values, uint[] key)
